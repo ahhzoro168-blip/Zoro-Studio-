@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+    <title>LinguaKhmer AI - Chinese &amp; Multilingual Translation Studio</title>
+    <meta name="description" content="Professional Chinese to Khmer and multilingual translation suite with Gemini AI, SRT subtitle editor, Word document processor, side-by-side comparison, real-time voice-to-text, and E2EE privacy." />
+    <meta property="og:title" content="LinguaKhmer AI - Chinese &amp; Multilingual Translation Studio" />
+    <meta property="og:description" content="Professional Chinese to Khmer and multilingual translation suite with Gemini AI, SRT subtitle editor, Word document processor, side-by-side comparison, real-time voice-to-text, and E2EE privacy." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- Theme & Mobile PWA tags -->
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="LinguaKhmer" />
+
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Syne:wght@800&family=JetBrains+Mono:wght@400;500&family=Kantumruy+Pro:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Seamless Vite HMR stub for AI Studio dev environment -->
+    <script>
+      (function() {
+        if (typeof window === 'undefined') return;
+        var OrigWS = window.WebSocket;
+        if (!OrigWS) return;
+
+        class FakeViteWebSocket extends EventTarget {
+          constructor(url, protocols) {
+            super();
+            this.url = url;
+            this.protocols = protocols;
+            this.readyState = 1;
+            this.OPEN = 1;
+            this.CONNECTING = 0;
+            this.CLOSING = 2;
+            this.CLOSED = 3;
+            this.bufferedAmount = 0;
+            this.extensions = '';
+            this.protocol = typeof protocols === 'string' ? protocols : (protocols && protocols[0]) || '';
+            this.binaryType = 'blob';
+            this.onopen = null;
+            this.onmessage = null;
+            this.onerror = null;
+            this.onclose = null;
+          }
+          send() {}
+          close() {
+            this.readyState = 3;
+          }
+        }
+
+        function MockWebSocket(url, protocols) {
+          var isVite = (typeof protocols === 'string' && protocols.startsWith('vite-')) ||
+                       (Array.isArray(protocols) && protocols.some(function(p) { return typeof p === 'string' && p.startsWith('vite-'); })) ||
+                       (typeof url === 'string' && (url.includes('token=') || url.includes('/@vite/')));
+          if (isVite) {
+            return new FakeViteWebSocket(url, protocols);
+          }
+          return new OrigWS(url, protocols);
+        }
+        MockWebSocket.prototype = OrigWS.prototype;
+        MockWebSocket.CONNECTING = 0;
+        MockWebSocket.OPEN = 1;
+        MockWebSocket.CLOSING = 2;
+        MockWebSocket.CLOSED = 3;
+        window.WebSocket = MockWebSocket;
+
+        window.addEventListener('error', function(event) {
+          if (event.message && (event.message.includes('WebSocket') || event.message.includes('closed without opened'))) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            return true;
+          }
+        }, true);
+        window.addEventListener('unhandledrejection', function(event) {
+          var reason = event.reason ? String(event.reason.message || event.reason) : '';
+          if (reason.includes('WebSocket') || reason.includes('closed without opened')) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+          }
+        }, true);
+      })();
+    </script>
+  </head>
+  <body class="bg-slate-950 text-slate-100 antialiased selection:bg-rose-500/30 selection:text-rose-200">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

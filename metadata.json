@@ -1,0 +1,6 @@
+{
+  "name": "LinguaKhmer AI - Chinese & Multilingual Translation Studio",
+  "description": "Professional Chinese to Khmer and multilingual translation suite with Gemini AI, SRT subtitle editor, Word document processor, side-by-side comparison, real-time voice-to-text, and E2EE privacy.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

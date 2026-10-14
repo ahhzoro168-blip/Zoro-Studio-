@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg: #0c0c0e;
+    --ink: #f4f4f5;
+    --accent: #10b981;
+    --panel: #161619;
+    --border: rgba(244, 244, 245, 0.1);
+    --rose: #f43f5e;
+    --font-khmer: 'Kantumruy Pro', 'Battambang', system-ui, sans-serif;
+    --font-chinese: 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+    --font-inter: 'Inter', sans-serif;
+    --font-syne: 'Syne', sans-serif;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-inter);
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Custom font utility classes */
+.font-khmer {
+  font-family: var(--font-khmer);
+  line-height: 1.8 !important; /* Essential for Khmer consonants & sub-consonant scripts */
+}
+
+.font-chinese {
+  font-family: var(--font-chinese);
+  line-height: 1.7;
+}
+
+/* Custom smooth scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.45);
+}
+
+/* Accessibility font scale root support */
+html[data-font-size="sm"] {
+  font-size: 14px;
+}
+html[data-font-size="md"] {
+  font-size: 16px;
+}
+html[data-font-size="lg"] {
+  font-size: 18px;
+}
+html[data-font-size="xl"] {
+  font-size: 20px;
+}
