@@ -7,6 +7,8 @@ import {
   Trash2,
   Send,
   Zap,
+  KeyRound,
+  ExternalLink,
 } from 'lucide-react';
 import {
   LanguageCode,
@@ -14,7 +16,9 @@ import {
   TranslationContext,
   TranslationResult,
   AlignedSegment,
+  AppSettings,
 } from '../types';
+import { directVerifyKey, normalizeApiKey } from '../utils/geminiDirect';
 
 interface TranslationStudioProps {
   onTranslate: (
@@ -28,6 +32,9 @@ interface TranslationStudioProps {
   onOpenSrtTab: () => void;
   initialSourceText?: string;
   initialTranslatedText?: string;
+  customApiKey?: string;
+  onUpdateSettings?: (newSettings: Partial<AppSettings>) => void;
+  onOpenSettings?: () => void;
 }
 
 const LANGUAGES: Array<{ code: LanguageCode; name: string; nativeName: string }> = [
@@ -48,6 +55,9 @@ export const TranslationStudio: React.FC<TranslationStudioProps> = ({
   onOpenSrtTab,
   initialSourceText = '',
   initialTranslatedText = '',
+  customApiKey,
+  onUpdateSettings,
+  onOpenSettings,
 }) => {
   const [sourceLang, setSourceLang] = useState<LanguageCode>('zh');
   const [targetLang, setTargetLang] = useState<LanguageCode>('km');
@@ -62,8 +72,41 @@ export const TranslationStudio: React.FC<TranslationStudioProps> = ({
   const [context, setContext] = useState<TranslationContext>('general');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
+  const [quickKeyInput, setQuickKeyInput] = useState<string>('');
+  const [isActivatingKey, setIsActivatingKey] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Quick key submit and retry translation immediately
+  const handleQuickKeySubmitAndRetry = async () => {
+    const clean = normalizeApiKey(quickKeyInput.trim());
+    if (!clean) return;
+
+    setIsActivatingKey(true);
+    try {
+      const verifyRes = await directVerifyKey(clean);
+      if (verifyRes.ok) {
+        const finalKey = verifyRes.correctedKey || clean;
+        onUpdateSettings?.({ customApiKey: finalKey });
+        setErrorMsg('');
+        setIsLoading(true);
+        const result = await onTranslate(sourceText, sourceLang, targetLang, style, context);
+        if (result) {
+          setTranslatedText(result.translatedText || '');
+          setPhonetics(result.phonetics || '');
+          setCulturalNotes(result.culturalNotes || '');
+          setSegments(result.segments || []);
+        }
+      } else {
+        setErrorMsg(verifyRes.error || 'Failed to verify key. Please check your key at aistudio.google.com and try again.');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Verification failed');
+    } finally {
+      setIsActivatingKey(false);
+      setIsLoading(false);
+    }
+  };
 
   // Perform translation
   const handleTriggerTranslate = async () => {
@@ -182,8 +225,52 @@ export const TranslationStudio: React.FC<TranslationStudioProps> = ({
         </button>
 
         {errorMsg && (
-          <div className="p-3 bg-rose-950/40 border border-rose-800/40 text-rose-300 text-xs rounded-lg font-mono">
-            Error: {errorMsg}
+          <div className="p-4 bg-rose-950/40 border border-rose-800/40 text-rose-300 text-xs rounded-lg font-mono space-y-3">
+            <div className="flex items-center gap-2 text-rose-200 font-bold">
+              <KeyRound className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>{errorMsg.includes('API_KEY') || errorMsg.includes('API Key') || errorMsg.includes('static') ? 'GEMINI_API_KEY_REQUIRED_ON_HOSTED_WEBSITE' : 'TRANSLATION_ERROR'}</span>
+            </div>
+            <p className="text-xs text-rose-300/90 leading-relaxed">
+              {errorMsg}
+            </p>
+
+            {(errorMsg.includes('API_KEY') || errorMsg.includes('API Key') || errorMsg.includes('static') || errorMsg.includes('key')) && (
+              <div className="pt-2 border-t border-rose-800/30 flex flex-col sm:flex-row gap-2">
+                <input
+                  type="password"
+                  value={quickKeyInput}
+                  onChange={(e) => setQuickKeyInput(e.target.value)}
+                  placeholder="Paste your Gemini API key (AIzaSy...)"
+                  className="bg-[#111113] border border-rose-800/50 rounded px-3 py-2 text-xs text-[#e4e4e7] placeholder:text-[#e4e4e7]/40 flex-1 focus:outline-hidden focus:border-emerald-500"
+                />
+                <button
+                  onClick={handleQuickKeySubmitAndRetry}
+                  disabled={isActivatingKey || !quickKeyInput.trim()}
+                  className="px-3.5 py-2 rounded bg-emerald-500 hover:bg-emerald-600 text-black font-bold uppercase tracking-wider text-xs transition cursor-pointer flex items-center justify-center gap-1.5 shrink-0 disabled:opacity-50"
+                >
+                  {isActivatingKey ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>ACTIVATING...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>SAVE & RETRY</span>
+                    </>
+                  )}
+                </button>
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-2 rounded bg-[#111113] border border-[#e4e4e7]/20 text-emerald-400 text-xs flex items-center justify-center gap-1 shrink-0 hover:bg-[#18181b]"
+                >
+                  <span>GET FREE KEY</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            )}
           </div>
         )}
 

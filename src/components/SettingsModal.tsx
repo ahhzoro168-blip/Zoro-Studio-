@@ -16,6 +16,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { AppSettings } from '../types';
+import { directVerifyKey, normalizeApiKey } from '../utils/geminiDirect';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -77,36 +78,81 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setIsVerifying(true);
     setVerifyStatus({ type: null, message: '' });
 
+    const keyToTest = normalizeApiKey(apiKeyInput.trim());
+
+    // 1. Try backend server if available
     try {
       const res = await fetch('/api/verify-key', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-gemini-api-key': apiKeyInput.trim(),
+          'x-gemini-api-key': keyToTest,
         },
-        body: JSON.stringify({ customApiKey: apiKeyInput.trim() }),
+        body: JSON.stringify({ customApiKey: keyToTest }),
       });
 
-      const data = await res.json();
-      if (res.ok && data.ok) {
-        if (data.correctedKey) {
-          setApiKeyInput(data.correctedKey);
-          onUpdateSettings({ customApiKey: data.correctedKey });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok) {
+          const finalKey = data.correctedKey || keyToTest;
+          setApiKeyInput(finalKey);
+          onUpdateSettings({ customApiKey: finalKey });
+          setVerifyStatus({
+            type: 'success',
+            message: data.message || 'Custom Google AI Studio API key verified successfully!',
+          });
+          setIsVerifying(false);
+          return;
         }
+      } else if (res.status === 400) {
+        const data = await res.json().catch(() => null);
+        if (data && data.error) {
+          // Attempt client-side direct verification before giving up
+          const directRes = await directVerifyKey(keyToTest);
+          if (directRes.ok) {
+            const finalKey = directRes.correctedKey || keyToTest;
+            setApiKeyInput(finalKey);
+            onUpdateSettings({ customApiKey: finalKey });
+            setVerifyStatus({
+              type: 'success',
+              message: directRes.message,
+            });
+            setIsVerifying(false);
+            return;
+          }
+          setVerifyStatus({
+            type: 'error',
+            message: data.error,
+          });
+          setIsVerifying(false);
+          return;
+        }
+      }
+    } catch {
+      // Backend /api/verify-key is unreachable (static web hosting like Vercel, Netlify, GitHub Pages)
+    }
+
+    // 2. Direct client verification fallback for static hosting
+    try {
+      const directResult = await directVerifyKey(keyToTest);
+      if (directResult.ok) {
+        const finalKey = directResult.correctedKey || keyToTest;
+        setApiKeyInput(finalKey);
+        onUpdateSettings({ customApiKey: finalKey });
         setVerifyStatus({
           type: 'success',
-          message: data.message || 'Custom Google AI Studio API key verified successfully!',
+          message: directResult.message || 'Google AI Studio key verified successfully! (Static Web Host Mode)',
         });
       } else {
         setVerifyStatus({
           type: 'error',
-          message: data.error || 'Failed to verify API key. Please check the key.',
+          message: directResult.error || 'Failed to verify API key. Please check your key at aistudio.google.com and try again.',
         });
       }
     } catch {
       setVerifyStatus({
         type: 'error',
-        message: 'Network error connecting to verification server.',
+        message: 'Could not connect to Google Gemini API. Please check your internet connection and try again.',
       });
     } finally {
       setIsVerifying(false);
@@ -114,11 +160,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleSaveApiKey = () => {
-    let cleanKey = apiKeyInput.trim();
-    if (cleanKey === 'AIzaSyDLPrLSFt5JWZlwDUfXRZEBKFeQSfaU2II') {
-      cleanKey = 'AIzaSyDLPrLSFt5JWZlwDUfXRZEBkFeQSfaU2II';
-      setApiKeyInput(cleanKey);
-    }
+    const cleanKey = normalizeApiKey(apiKeyInput.trim());
+    setApiKeyInput(cleanKey);
     onUpdateSettings({ customApiKey: cleanKey || undefined });
     setVerifyStatus({
       type: 'success',

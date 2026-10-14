@@ -20,6 +20,17 @@ const port = Number(process.env.PORT) || 3000;
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// CORS middleware so hosted clients on other domains can reach the backend
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, x-gemini-api-key');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 // Initialize Gemini Client with support for optional user custom key
 const defaultClient = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
@@ -52,13 +63,18 @@ function getGeminiClient(customApiKey?: string): GoogleGenAI {
 }
 
 const DEFAULT_MODEL = 'gemini-3.1-flash-lite';
-const FALLBACK_MODELS = ['gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-2.5-flash'];
+const FALLBACK_MODELS = ['gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'];
 
 async function callGeminiResilient(params: {
   contents: any;
   config?: any;
   customApiKey?: string;
 }) {
+  const hasKey = (params.customApiKey && params.customApiKey.trim()) || process.env.GEMINI_API_KEY?.trim();
+  if (!hasKey) {
+    throw new Error('API_KEY_REQUIRED: No Gemini API key provided. Please enter your API key in Settings or add GEMINI_API_KEY to server environment.');
+  }
+
   const client = getGeminiClient(params.customApiKey);
   let lastError: any = null;
 
@@ -79,17 +95,28 @@ async function callGeminiResilient(params: {
         errMsg.includes('RESOURCE_EXHAUSTED') ||
         err?.status === 'RESOURCE_EXHAUSTED';
 
-      // If this model hits rate limit, try the other model immediately (separate quota pool)
-      if (is429) {
+      // If this model hits rate limit or 503, try next model
+      if (is429 || errMsg.includes('503') || errMsg.includes('high demand') || errMsg.includes('NOT_FOUND')) {
         continue;
       }
 
-      // For 503 temporary spike, wait briefly before next model
       await new Promise((resolve) => setTimeout(resolve, 300));
     }
   }
 
   console.error('[Gemini final error]:', lastError);
+  const lastMsg = lastError?.message || String(lastError);
+  if (lastMsg.includes('503') || lastMsg.includes('high demand') || lastMsg.includes('UNAVAILABLE')) {
+    const customErr: any = new Error('Google Gemini model is temporarily experiencing high demand. Please try again in a few moments, or connect your personal API key in Settings (⚙️).');
+    customErr.status = 503;
+    throw customErr;
+  }
+  if (lastMsg.includes('429') || lastMsg.includes('RESOURCE_EXHAUSTED')) {
+    const customErr: any = new Error('Gemini API rate limit reached. Please retry in a few seconds or enter your personal API key in Settings (⚙️).');
+    customErr.status = 429;
+    throw customErr;
+  }
+
   throw lastError;
 }
 

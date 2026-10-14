@@ -18,10 +18,14 @@ import {
   Sliders,
   Check,
   Trash2,
+  KeyRound,
+  ExternalLink,
+  X,
 } from 'lucide-react';
-import { SubtitleCue, SubtitleTone, TranslationStyle } from '../types';
+import { SubtitleCue, SubtitleTone, TranslationStyle, AppSettings } from '../types';
 import { parseSrt, serializeSrt, downloadFile } from '../utils/srtParser';
 import { speakText } from '../utils/speech';
+import { directTranslateChunks, getActiveApiKey, directVerifyKey, normalizeApiKey } from '../utils/geminiDirect';
 
 interface SubtitleStudioProps {
   onSaveToHistory: (
@@ -33,6 +37,8 @@ interface SubtitleStudioProps {
   style: TranslationStyle;
   targetLang: string;
   customApiKey?: string;
+  onUpdateSettings?: (newSettings: Partial<AppSettings>) => void;
+  onOpenSettings?: () => void;
 }
 
 // Helper to compute duration in seconds from SRT timestamp string
@@ -54,6 +60,8 @@ export const SubtitleStudio: React.FC<SubtitleStudioProps> = ({
   onSaveToHistory,
   targetLang,
   customApiKey,
+  onUpdateSettings,
+  onOpenSettings,
 }) => {
   const [cues, setCues] = useState<SubtitleCue[]>([]);
   const [fileName, setFileName] = useState<string>('');
@@ -69,6 +77,12 @@ export const SubtitleStudio: React.FC<SubtitleStudioProps> = ({
   // Performance / Speed Mode
   const [speedMode, setSpeedMode] = useState<'turbo' | 'standard'>('turbo');
   const [stats, setStats] = useState<{ speed: number; elapsed: number } | null>(null);
+
+  // Key prompt modal for hosted website setup
+  const [showKeyModal, setShowKeyModal] = useState<boolean>(false);
+  const [modalKeyInput, setModalKeyInput] = useState<string>('');
+  const [isModalVerifying, setIsModalVerifying] = useState<boolean>(false);
+  const [modalError, setModalError] = useState<string>('');
 
   const abortControllerRef = useRef<boolean>(false);
   const startTimeRef = useRef<number>(0);
@@ -108,9 +122,56 @@ export const SubtitleStudio: React.FC<SubtitleStudioProps> = ({
     reader.readAsText(file);
   };
 
+  const handleModalSaveAndStart = async () => {
+    const clean = normalizeApiKey(modalKeyInput.trim());
+    if (!clean) {
+      setModalError('Please enter a valid Google AI Studio API key.');
+      return;
+    }
+    setIsModalVerifying(true);
+    setModalError('');
+    try {
+      const verifyRes = await directVerifyKey(clean);
+      if (verifyRes.ok) {
+        const finalKey = verifyRes.correctedKey || clean;
+        onUpdateSettings?.({ customApiKey: finalKey });
+        setShowKeyModal(false);
+        setTimeout(() => {
+          startBatchTranslation(finalKey);
+        }, 100);
+      } else {
+        setModalError(verifyRes.error || 'Failed to verify key. Please check your key at aistudio.google.com and try again.');
+      }
+    } catch (e: any) {
+      setModalError(e.message || 'Verification failed');
+    } finally {
+      setIsModalVerifying(false);
+    }
+  };
+
   // High-Speed Parallel Batch Translation
-  const startBatchTranslation = async () => {
+  const startBatchTranslation = async (overrideKey?: string) => {
     if (cues.length === 0 || isProcessing) return;
+
+    const activeKey = getActiveApiKey(overrideKey || customApiKey);
+
+    // If no active key is stored, check if backend server is running and has a key
+    if (!activeKey) {
+      let serverHasKey = false;
+      try {
+        const res = await fetch('/api/health');
+        const ct = res.headers.get('content-type') || '';
+        if (res.ok && ct.includes('application/json')) {
+          const data = await res.json();
+          serverHasKey = !!data.hasApiKey;
+        }
+      } catch {}
+
+      if (!serverHasKey) {
+        setShowKeyModal(true);
+        return;
+      }
+    }
 
     setIsProcessing(true);
     abortControllerRef.current = false;
@@ -150,8 +211,8 @@ export const SubtitleStudio: React.FC<SubtitleStudioProps> = ({
 
         try {
           const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-          if (customApiKey && customApiKey.trim()) {
-            headers['x-gemini-api-key'] = customApiKey.trim();
+          if (activeKey) {
+            headers['x-gemini-api-key'] = activeKey;
           }
 
           const response = await fetch('/api/translate-chunks', {
@@ -163,7 +224,7 @@ export const SubtitleStudio: React.FC<SubtitleStudioProps> = ({
               targetLang: targetLang || 'km',
               subtitleTone,
               isSubtitle: true,
-              customApiKey,
+              customApiKey: activeKey,
             }),
           });
 
@@ -178,7 +239,8 @@ export const SubtitleStudio: React.FC<SubtitleStudioProps> = ({
             continue;
           }
 
-          if (response.ok) {
+          const ct = response.headers.get('content-type') || '';
+          if (response.ok && ct.includes('application/json')) {
             const data = await response.json();
             if (Array.isArray(data.results)) {
               data.results.forEach((resItem: { id: number | string; translatedText: string }) => {
@@ -190,11 +252,41 @@ export const SubtitleStudio: React.FC<SubtitleStudioProps> = ({
               setCues([...updatedCues]);
               success = true;
             }
-          } else {
-            await new Promise((r) => setTimeout(r, 500));
           }
         } catch {
-          await new Promise((r) => setTimeout(r, 500));
+          // Backend /api/translate-chunks not available (e.g. static hosting)
+        }
+
+        // If backend attempt did not succeed, try direct client-side translation if active key is available
+        if (!success && activeKey) {
+          try {
+            setCurrentChunkInfo(`Translating cues ${chunk.startIndex + 1} - ${Math.min(chunk.startIndex + chunk.items.length, totalCues)} via Google API directly...`);
+            const directResults = await directTranslateChunks({
+              chunks: chunk.items,
+              sourceLang: 'zh',
+              targetLang: targetLang || 'km',
+              style: 'natural',
+              subtitleTone,
+              customApiKey: activeKey,
+            });
+
+            if (Array.isArray(directResults) && directResults.length > 0) {
+              directResults.forEach((resItem) => {
+                const cueIdx = updatedCues.findIndex((c) => c.id === resItem.id);
+                if (cueIdx !== -1) {
+                  updatedCues[cueIdx].translatedText = resItem.translatedText;
+                }
+              });
+              setCues([...updatedCues]);
+              success = true;
+            }
+          } catch (directErr) {
+            console.error('Direct chunk translation failed:', directErr);
+          }
+        }
+
+        if (!success) {
+          await new Promise((r) => setTimeout(r, 600));
         }
       }
 
@@ -216,17 +308,22 @@ export const SubtitleStudio: React.FC<SubtitleStudioProps> = ({
     }
 
     setIsProcessing(false);
-    setCurrentChunkInfo('⚡ Subtitle translation completed successfully!');
-
-    // Save to history
-    const allSource = updatedCues.map((c) => c.sourceText).join('\n');
-    const allTranslated = updatedCues.map((c) => c.translatedText).join('\n');
-    onSaveToHistory(
-      fileName || 'Subtitle Translation',
-      allSource,
-      allTranslated,
-      updatedCues
-    );
+    const anyTranslated = updatedCues.some((c) => !!c.translatedText);
+    if (anyTranslated) {
+      setCurrentChunkInfo('⚡ Subtitle translation completed successfully!');
+      // Save to history
+      const allSource = updatedCues.map((c) => c.sourceText).join('\n');
+      const allTranslated = updatedCues.map((c) => c.translatedText).join('\n');
+      onSaveToHistory(
+        fileName || 'Subtitle Translation',
+        allSource,
+        allTranslated,
+        updatedCues
+      );
+    } else {
+      setCurrentChunkInfo('⚠️ Subtitle translation could not complete. Please enter a valid Gemini API key.');
+      setShowKeyModal(true);
+    }
   };
 
   const handleStopTranslation = () => {
@@ -462,7 +559,7 @@ export const SubtitleStudio: React.FC<SubtitleStudioProps> = ({
                   </button>
                 ) : (
                   <button
-                    onClick={startBatchTranslation}
+                    onClick={() => startBatchTranslation()}
                     className="flex items-center gap-2 px-5 py-2.5 rounded text-xs font-bold uppercase tracking-wider bg-[#10b981] hover:bg-[#059669] text-[#111113] shadow-md transition cursor-pointer font-mono"
                   >
                     <Play className="w-3.5 h-3.5 fill-current" />
@@ -676,6 +773,94 @@ export const SubtitleStudio: React.FC<SubtitleStudioProps> = ({
                   className="hidden"
                 />
               </label>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Key Prompt Modal for Hosted Website Setup */}
+      {showKeyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 font-mono">
+          <div className="w-full max-w-lg bg-[#18181b] border border-[#e4e4e7]/10 rounded-lg shadow-2xl overflow-hidden flex flex-col text-[#e4e4e7]">
+            <div className="px-5 py-4 border-b border-[#e4e4e7]/10 flex items-center justify-between bg-[#111113]">
+              <div className="flex items-center gap-2">
+                <KeyRound className="w-4 h-4 text-emerald-400" />
+                <h3 className="font-bold text-xs uppercase tracking-wider text-[#e4e4e7]">
+                  API_KEY_REQUIRED_FOR_SUBTITLES
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowKeyModal(false)}
+                className="p-1 rounded text-[#e4e4e7]/60 hover:text-[#e4e4e7] hover:bg-[#18181b] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs font-mono">
+              <p className="text-[#e4e4e7]/70 leading-relaxed">
+                When running on a hosted website, translating subtitles requires your Google AI Studio Gemini API key. Enter it below to start translation instantly.
+              </p>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase tracking-wider text-[#e4e4e7]/50 block">
+                  Google AI Studio API Key (AIzaSy...)
+                </label>
+                <input
+                  type="password"
+                  value={modalKeyInput}
+                  onChange={(e) => setModalKeyInput(e.target.value)}
+                  placeholder="Paste your Gemini API key (AIzaSy...)"
+                  className="w-full bg-[#111113] border border-[#e4e4e7]/20 rounded p-2.5 text-xs text-[#e4e4e7] placeholder:text-[#e4e4e7]/30 focus:outline-hidden focus:border-emerald-500 font-mono"
+                />
+              </div>
+
+              {modalError && (
+                <div className="p-2.5 rounded bg-rose-950/40 border border-rose-800/40 text-rose-300 text-xs">
+                  {modalError}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between text-[10px] text-[#e4e4e7]/50 pt-1">
+                <span>Free tier includes fast generation</span>
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-emerald-400 hover:underline flex items-center gap-1 font-bold"
+                >
+                  <span>Get Free Key</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+
+              <div className="pt-3 border-t border-[#e4e4e7]/10 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowKeyModal(false)}
+                  className="px-3 py-2 rounded bg-[#111113] hover:bg-[#1f1f23] text-[#e4e4e7]/60 text-xs font-bold uppercase transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleModalSaveAndStart}
+                  disabled={isModalVerifying || !modalKeyInput.trim()}
+                  className="px-4 py-2 rounded bg-[#10b981] hover:bg-[#059669] text-black text-xs font-bold uppercase tracking-wider transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50 shadow-md"
+                >
+                  {isModalVerifying ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Verifying...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Save & Start Translating</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

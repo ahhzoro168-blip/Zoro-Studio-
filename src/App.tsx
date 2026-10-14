@@ -6,6 +6,7 @@ import { DictionaryDrawer } from './components/DictionaryDrawer';
 import { HistoryDrawer } from './components/HistoryDrawer';
 import { SettingsModal } from './components/SettingsModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { ApiKeyBanner } from './components/ApiKeyBanner';
 import {
   HistoryItem,
   AppSettings,
@@ -23,6 +24,7 @@ import {
   togglePinHistoryItem,
   saveHistory,
 } from './utils/storage';
+import { directTranslate, getActiveApiKey } from './utils/geminiDirect';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'text' | 'srt'>('text');
@@ -51,7 +53,7 @@ export default function App() {
     saveSettings(updated);
   };
 
-  // Perform translation via Express server API
+  // Perform translation via Express server API or direct Gemini API when hosted on static hosting
   const handleTranslate = async (
     text: string,
     sourceLang: string,
@@ -59,10 +61,13 @@ export default function App() {
     style: TranslationStyle,
     context: TranslationContext
   ): Promise<TranslationResult | null> => {
+    let data: TranslationResult | null = null;
+
     try {
+      const activeKey = getActiveApiKey(settings.customApiKey);
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (settings.customApiKey?.trim()) {
-        headers['x-gemini-api-key'] = settings.customApiKey.trim();
+      if (activeKey) {
+        headers['x-gemini-api-key'] = activeKey;
       }
 
       const response = await fetch('/api/translate', {
@@ -75,40 +80,81 @@ export default function App() {
           style,
           context,
           glossary: settings.customGlossary,
-          customApiKey: settings.customApiKey,
+          customApiKey: activeKey,
         }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
+      const contentType = response.headers.get('content-type') || '';
+
+      if (response.ok && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        // If the server returns HTML (static host 404 rewrite) or 404
+        if (contentType.includes('text/html') || response.status === 404) {
+          throw new Error('BACKEND_UNAVAILABLE');
+        }
+        const errorData = await response.json().catch(() => null);
+        if (!errorData) {
+          throw new Error('BACKEND_UNAVAILABLE');
+        }
+        if (
+          errorData.error === 'API_KEY_REQUIRED' ||
+          errorData.error?.includes('API_KEY_REQUIRED') ||
+          errorData.error?.includes('Must provide an API key')
+        ) {
+          throw new Error('API_KEY_REQUIRED: No Gemini API key provided. Please configure your API key to translate.');
+        }
         throw new Error(errorData.error || 'Failed to translate');
       }
-
-      const data: TranslationResult = await response.json();
-
-      // Automatically add to history log
-      const historyItem: HistoryItem = {
-        id: `trans_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        title: text.slice(0, 36) + (text.length > 36 ? '...' : ''),
-        timestamp: Date.now(),
-        sourceLang,
-        targetLang,
-        sourceText: text,
-        translatedText: data.translatedText,
-        fileType: 'text',
-        segments: data.segments,
-        charCount: text.length,
-        isEncrypted: settings.e2eeEnabled,
-      };
-
-      const updatedHistory = addHistoryItem(historyItem);
-      setHistory(updatedHistory);
-
-      return data;
     } catch (err: any) {
-      console.error('Translation error:', err);
-      throw err;
+      const activeKey = getActiveApiKey(settings.customApiKey);
+      // If backend is unavailable or lacks key, try direct client-side Gemini API
+      if (activeKey) {
+        try {
+          data = await directTranslate({
+            text,
+            sourceLang,
+            targetLang,
+            style,
+            context,
+            customApiKey: activeKey,
+            glossary: settings.customGlossary,
+          });
+        } catch (directErr: any) {
+          console.error('Direct translation error:', directErr);
+          throw new Error(directErr.message || 'Direct Gemini translation failed');
+        }
+      } else {
+        // Backend unreachable or has no key, and no user key provided
+        throw new Error(
+          'API_KEY_REQUIRED: On hosted websites, a Google AI Studio Gemini API key is required to translate. Please enter your free key in the prompt or Settings (⚙️).'
+        );
+      }
     }
+
+    if (!data) {
+      throw new Error('Translation returned no output');
+    }
+
+    // Automatically add to history log
+    const historyItem: HistoryItem = {
+      id: `trans_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      title: text.slice(0, 36) + (text.length > 36 ? '...' : ''),
+      timestamp: Date.now(),
+      sourceLang,
+      targetLang,
+      sourceText: text,
+      translatedText: data.translatedText,
+      fileType: 'text',
+      segments: data.segments,
+      charCount: text.length,
+      isEncrypted: settings.e2eeEnabled,
+    };
+
+    const updatedHistory = addHistoryItem(historyItem);
+    setHistory(updatedHistory);
+
+    return data;
   };
 
   // Save subtitle translation to history
@@ -178,6 +224,13 @@ export default function App() {
         onUpdateSettings={handleUpdateSettings}
       />
 
+      {/* Hosted Website Setup Banner (shows automatically when hosted without a built-in server key) */}
+      <ApiKeyBanner
+        settings={settings}
+        onUpdateSettings={handleUpdateSettings}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+      />
+
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* Navigation Tabs Bar */}
@@ -211,6 +264,9 @@ export default function App() {
             onOpenSrtTab={() => setActiveTab('srt')}
             initialSourceText={selectedSourceText}
             initialTranslatedText={selectedTranslatedText}
+            customApiKey={settings.customApiKey}
+            onUpdateSettings={handleUpdateSettings}
+            onOpenSettings={() => setIsSettingsOpen(true)}
           />
         )}
 
@@ -222,6 +278,8 @@ export default function App() {
             style="natural"
             targetLang="km"
             customApiKey={settings.customApiKey}
+            onUpdateSettings={handleUpdateSettings}
+            onOpenSettings={() => setIsSettingsOpen(true)}
           />
         )}
       </main>
