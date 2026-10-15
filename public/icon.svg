@@ -1,32 +1,62 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#0f172a" />
-      <stop offset="50%" stop-color="#1e1b4b" />
-      <stop offset="100%" stop-color="#311042" />
+      <stop offset="0%" stop-color="#0c0c0e" />
+      <stop offset="50%" stop-color="#161619" />
+      <stop offset="100%" stop-color="#111113" />
+    </linearGradient>
+    <linearGradient id="cardBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#18181b" />
+      <stop offset="100%" stop-color="#111113" />
     </linearGradient>
     <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#38bdf8" />
-      <stop offset="50%" stop-color="#6366f1" />
-      <stop offset="100%" stop-color="#ec4899" />
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#059669" />
     </linearGradient>
     <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feGaussianBlur stdDeviation="6" result="blur" />
       <feComposite in="SourceGraphic" in2="blur" operator="over" />
     </filter>
   </defs>
+
+  <!-- Background -->
   <rect width="512" height="512" rx="112" fill="url(#bg)" />
-  <!-- Outer ring -->
-  <circle cx="256" cy="256" r="190" fill="none" stroke="url(#accent)" stroke-width="6" opacity="0.4" stroke-dasharray="12 12" />
-  <!-- Center badge -->
-  <rect x="96" y="96" width="320" height="320" rx="48" fill="#1e293b" fill-opacity="0.85" stroke="url(#accent)" stroke-width="3" />
-  <!-- Chinese character: 译 (Translate) or 华 (Hua) -->
-  <text x="180" y="240" font-family="'Noto Sans SC', sans-serif, system-ui" font-weight="900" font-size="96" fill="#38bdf8" text-anchor="middle" filter="url(#glow)">中</text>
-  <!-- Arrow exchange -->
-  <path d="M220 256 L292 256 M276 240 L296 256 L276 272" fill="none" stroke="url(#accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
-  <!-- Khmer character: ខ្មែរ / ក -->
-  <text x="330" y="240" font-family="'Kantumruy Pro', 'Khmer OS', sans-serif, system-ui" font-weight="800" font-size="80" fill="#f43f5e" text-anchor="middle" filter="url(#glow)">ខ្មែរ</text>
-  <!-- Subtitle -->
-  <text x="256" y="340" font-family="system-ui, -apple-system, sans-serif" font-weight="700" font-size="28" fill="#f8fafc" text-anchor="middle" letter-spacing="4">LINGUAKHMER</text>
-  <text x="256" y="375" font-family="system-ui, -apple-system, sans-serif" font-weight="600" font-size="16" fill="#94a3b8" text-anchor="middle" letter-spacing="2">AI TRANSLATION STUDIO</text>
+  
+  <!-- Outer glowing border -->
+  <rect x="24" y="24" width="464" height="464" rx="92" fill="none" stroke="url(#accent)" stroke-width="3" opacity="0.4" />
+
+  <!-- Central Card -->
+  <rect x="64" y="64" width="384" height="384" rx="72" fill="url(#cardBg)" stroke="#e4e4e7" stroke-opacity="0.15" stroke-width="2" />
+
+  <!-- Dog Silhouette / Illustration representing white dog in shirt -->
+  <!-- Dog Body / T-Shirt -->
+  <path d="M192 310 C192 270 220 250 256 250 C292 250 320 270 320 310 L330 350 C335 365 320 375 305 375 L207 375 C192 375 177 365 182 350 Z" fill="#e4e4e7" opacity="0.9" />
+  <!-- T-shirt collar & graphic -->
+  <path d="M220 250 Q256 270 292 250 L280 290 Q256 300 232 290 Z" fill="#10b981" opacity="0.85" />
+  <circle cx="256" cy="275" r="14" fill="#111113" />
+
+  <!-- Dog Head (White Dog) -->
+  <path d="M210 220 C205 180 225 150 256 150 C287 150 307 180 302 220 C300 240 280 255 256 255 C232 255 212 240 210 220 Z" fill="#ffffff" />
+  
+  <!-- Pointed Ears -->
+  <polygon points="205,170 185,120 225,145" fill="#ffffff" />
+  <polygon points="307,170 327,120 287,145" fill="#ffffff" />
+  <!-- Inner ears -->
+  <polygon points="210,165 197,135 220,150" fill="#f43f5e" opacity="0.4" />
+  <polygon points="302,165 315,135 292,150" fill="#f43f5e" opacity="0.4" />
+
+  <!-- Snoot & Eyes (Yawning / Happy expression) -->
+  <ellipse cx="256" cy="225" rx="20" ry="14" fill="#27272a" />
+  <ellipse cx="256" cy="221" rx="8" ry="5" fill="#111113" />
+  
+  <!-- Eyes (closed happy lines or calm) -->
+  <path d="M225 190 Q235 183 245 190" fill="none" stroke="#27272a" stroke-width="4" stroke-linecap="round" />
+  <path d="M267 190 Q277 183 287 190" fill="none" stroke="#27272a" stroke-width="4" stroke-linecap="round" />
+
+  <!-- Yawning / Open Mouth -->
+  <path d="M246 235 Q256 255 266 235 Z" fill="#f43f5e" />
+
+  <!-- Typography: ZORO STUDIO -->
+  <text x="256" y="405" font-family="'Syne', system-ui, sans-serif" font-weight="800" font-size="28" fill="#10b981" text-anchor="middle" letter-spacing="3" filter="url(#glow)">ZORO STUDIO</text>
+  <text x="256" y="426" font-family="'JetBrains Mono', monospace" font-weight="500" font-size="11" fill="#e4e4e7" fill-opacity="0.6" text-anchor="middle" letter-spacing="4">AI TRANSLATION</text>
 </svg>
