@@ -14,8 +14,8 @@ export default defineConfig(() => {
         includeAssets: ['icon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
         manifest: {
           id: '/',
-          name: 'LinguaKhmer AI - Chinese & Multilingual Translation',
-          short_name: 'LinguaKhmer',
+          name: 'Zoro Studio - Chinese & Multilingual Translation',
+          short_name: 'Zoro Studio',
           description: 'Chinese to Khmer & Multilingual translation with Gemini AI, SRT subtitle editor, and Word document processor.',
           theme_color: '#0f172a',
           background_color: '#0f172a',
